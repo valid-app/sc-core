@@ -162,7 +162,7 @@ contract ProjectInfo is Authorization {
         emit TransferProjectOwnership(projectId, msg.sender);
     }
     function addProjectAdmin(uint256 projectId, address admin) external onlyProjectOwner(projectId) {
-        require(projectAdmin[projectId][projectAdminInv[projectId][admin]] != admin, "already a admin");
+        require(projectAdmin[projectId].length == 0 || projectAdmin[projectId][projectAdminInv[projectId][admin]] != admin, "already a admin");
         projectAdminInv[projectId][admin] = projectAdmin[projectId].length;
         projectAdmin[projectId].push(admin);
 
