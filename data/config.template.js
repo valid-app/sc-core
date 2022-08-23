@@ -6,13 +6,15 @@ module.exports = {
     },    
     deployOptions: {
         projectInfoOptions: {
-            validator: ''
+            validator: '',
+            admins: [
+                ''
+            ]
         }
     },
     setupOptions: {
         projectInfoOptions: {
             address: '',
-            permittedAddress: '',
             projects: [
                 {
                     projectId: 0,
@@ -23,7 +25,7 @@ module.exports = {
                     projectId: 0,
                     ipfsCid: '',
                     isFirstVersion: false,
-                    setCurrent: true
+                    validate: true
                 }
             ],
             packages: [
@@ -31,6 +33,7 @@ module.exports = {
                     projectId: 0,
                     infoCid: '',
                     setToAuditing: true,
+                    setToAuditPassed: true,
                     codeCid: ''
                 }
             ]

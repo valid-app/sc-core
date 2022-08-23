@@ -8,6 +8,9 @@ async function deployProjectInfo(wallet: Wallet) {
     let projectInfo = new Contracts.ProjectInfo(wallet);
     let address = await projectInfo.deploy(projectInfoOptions.validator);
     console.log('ProjectInfo', address)
+    for (let i = 0; i < projectInfoOptions.admins.length; i++) {
+        await projectInfo.permit(projectInfoOptions.admins[i]);
+    }
 }
 
 async function deployDomainInfo(wallet: Wallet) {

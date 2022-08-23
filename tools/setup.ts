@@ -3,10 +3,9 @@ import {Contracts} from "../src";
 import Web3 from 'web3';
 import * as Config from '../data/config';
 
-async function setupProjectInfo(wallet: Wallet, permittedAddress: string) {
+async function setupProjectInfo(wallet: Wallet) {
     let {projectInfoOptions} = Config.setupOptions;
     let projectInfo = new Contracts.ProjectInfo(wallet, projectInfoOptions.address);
-    await projectInfo.permit(permittedAddress);
     let projectVersionIdx = 0;
     for (let i = 0; i < projectInfoOptions.projects.length; i++) {
         let project = projectInfoOptions.projects[i];
@@ -18,19 +17,19 @@ async function setupProjectInfo(wallet: Wallet, permittedAddress: string) {
                 projectId: project.projectId,
                 ipfsCid: project.ipfsCid
             })    
-
-            if (project.setCurrent) {
-                await projectInfo.validateProject({
-                    projectVersionIdx,
-                    status: 1
-                });
-        
-                await projectInfo.setProjectCurrentVersion({
-                    projectId: project.projectId,
-                    versionIdx: projectVersionIdx
-                })
-            }
         }
+        if (project.validate) {
+            await projectInfo.validateProject({
+                projectVersionIdx,
+                status: 1
+            });
+    
+            await projectInfo.setProjectCurrentVersion({
+                projectId: project.projectId,
+                versionIdx: projectVersionIdx
+            })
+        }
+
         projectVersionIdx++;
     }
     
@@ -48,6 +47,9 @@ async function setupProjectInfo(wallet: Wallet, permittedAddress: string) {
                 ipfsCid: packageInfo.codeCid
             })
         }
+        if (packageInfo.setToAuditPassed) {
+            await projectInfo.setPackageVersionToAuditPassed(packageVersionId)
+        }
         packageVersionId++;
     }
 
@@ -57,7 +59,7 @@ async function run() {
     let {rpcUrl, deployer} = Config;
     let provider = new Web3.providers.HttpProvider(rpcUrl);
     let wallet = new Wallet(provider, deployer);
-    await setupProjectInfo(wallet, deployer.address);
+    await setupProjectInfo(wallet);
 }
 
 run();
