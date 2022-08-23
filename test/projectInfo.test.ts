@@ -64,6 +64,22 @@ suite('##Contracts', function() {
         assert.strictEqual(projectVersionList.length, 1); 
         projectVersionMap[0] = projectVersionList;
     })
+    test('Add project admin and remove project admin', async function() {    
+        wallet.defaultAccount = accounts[0]; 
+        await projectInfo.addProjectAdmin({
+            projectId: 0,
+            admin: accounts[1]
+        });
+        let projectAdmin = await projectInfo.projectAdmin({
+            param1: 0,
+            param2: 0
+        });
+        assert.strictEqual(projectAdmin, accounts[1]);
+        await projectInfo.removeProjectAdmin({
+            projectId: 0,
+            admin: accounts[1]
+        });
+    })    
     test('Create 2 more projects and a project version for each', async function() {    
         let newProject2Event = await createNewProject('bay2');
         // let newProject2VersionEvent = await createNewVersion(newProject2Event.projectId.toNumber(), 'bay2');
