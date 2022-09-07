@@ -2,38 +2,13 @@
 pragma solidity 0.8.13;
 
 import "./Authorization.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "./ProjectAudit.sol";
 
-contract ProjectInfo is Authorization {
-
-    modifier onlyProjectOwner(uint256 projectId) {
-        require(projectOwner[projectId] == msg.sender, "not from owner");
-        _;
-    }
-    modifier isProjectAdminOrOwner(uint256 projectId) {
-        require(projectAdmin[projectId].length > 0 &&  
-            projectAdmin[projectId][projectAdminInv[projectId][msg.sender]] == msg.sender 
-            || projectOwner[projectId] == msg.sender
-        , "not from admin");
-        _;
-    }
-
-    event NewProject(uint256 indexed projectId, address indexed owner);
-    event NewProjectVersion(uint256 indexed projectId, uint256 indexed projectVersionIdx, string ipfsCid);
-    event VoidProjectVersion(uint256 indexed projectVersionIdx);
-    event SetProjectCurrentVersion(uint256 indexed projectId, uint256 indexed projectVersionIdx);
-    event Validate(uint256 indexed projectVersionIdx, ProjectStatus status);
-    
-    event UpdateValidator(address indexed validator);
-    event TransferProjectOwnership(uint256 indexed projectId, address indexed newOwner);
-    event AddAdmin(uint256 indexed projectId, address indexed admin);
-    event RemoveAdmin(uint256 indexed projectId, address indexed admin);
-
-    event NewPackage(uint256 indexed projectId, uint256 indexed packageId, string ipfsCid);
-    event UpdatePackageIpfsCid(uint256 indexed packageId, string ipfsCid);
-    event NewPackageVersion(uint256 indexed packageId, uint256 indexed packageVersionId, uint256 version);
-    event SetPackageVersionStatus(uint256 indexed packageId, uint256 indexed packageVersionId, PackageVersionStatus status);
-    // event AddProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
-    // event RemoveProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
+contract ProjectInfo is Authorization, ReentrancyGuard {
+    using SafeERC20 for IERC20;
 
     enum ProjectStatus {PENDING, PASSED, FAILED, VOIDED}
     enum PackageStatus {INACTIVE, ACTIVE}
@@ -58,11 +33,14 @@ contract ProjectInfo is Authorization {
         PackageVersionStatus status;
         string ipfsCid;
     }
-
+    
+    IERC20 public immutable token;
+    ProjectAudit public projectAudit;
     // active package list
-
     uint256 public projectCount;
 
+    mapping(uint256 => uint256) public projectOwnerBalance; //projectOwnerBalance[projectId] = amount
+    
     // project <-> owner / admin
     mapping(uint256 => address) public projectOwner; // projectOwner[projectId] = owner
     mapping(address => uint256[]) public ownersProjects; // ownersProjects[owner][ownersProjectsIdx] = projectId
@@ -87,11 +65,50 @@ contract ProjectInfo is Authorization {
     mapping(uint256 => uint256[]) public projectPackages; // projectPackages[projectId][projectPackagesIdx] = packageId
     mapping(uint256 => mapping(uint256 => uint256)) public projectPackagesInv; // projectPackagesInv[projectId][packageId] = projectPackagesIdx
 
-    address public validator;
+    event NewProject(uint256 indexed projectId, address indexed owner);
+    event NewProjectVersion(uint256 indexed projectId, uint256 indexed projectVersionIdx, string ipfsCid);
+    event VoidProjectVersion(uint256 indexed projectVersionIdx);
+    event SetProjectCurrentVersion(uint256 indexed projectId, uint256 indexed projectVersionIdx);
+    event Validate(uint256 indexed projectVersionIdx, ProjectStatus status);
+    
+    event UpdateProjectAudit(ProjectAudit indexed projectAudit);
+    event TransferProjectOwnership(uint256 indexed projectId, address indexed newOwner);
+    event AddAdmin(uint256 indexed projectId, address indexed admin);
+    event RemoveAdmin(uint256 indexed projectId, address indexed admin);
 
-    constructor(address _validator) {
-        validator = _validator; // FIXME: emit event
+    event NewPackage(uint256 indexed projectId, uint256 indexed packageId, string ipfsCid);
+    event UpdatePackageIpfsCid(uint256 indexed packageId, string ipfsCid);
+    event NewPackageVersion(uint256 indexed packageId, uint256 indexed packageVersionId, uint256 version);
+    event SetPackageVersionStatus(uint256 indexed packageId, uint256 indexed packageVersionId, PackageVersionStatus status);
+    // event AddProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
+    // event RemoveProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
+
+    event Deposit(uint256 indexed projectId, uint256 amount, uint256 newBalance);
+    event Withdraw(uint256 indexed projectId, uint256 amount, uint256 newBalance);
+
+    constructor(IERC20 _token, ProjectAudit _projectAudit) {
+        token = _token;
+        projectAudit = _projectAudit;
     }
+
+    modifier onlyProjectOwner(uint256 projectId) {
+        require(projectOwner[projectId] == msg.sender, "not from owner");
+        _;
+    }
+
+    modifier isProjectAdminOrOwner(uint256 projectId) {
+        require(projectAdmin[projectId].length > 0 &&  
+            projectAdmin[projectId][projectAdminInv[projectId][msg.sender]] == msg.sender 
+            || projectOwner[projectId] == msg.sender
+        , "not from admin");
+        _;
+    }
+
+    modifier onlyAuditor {
+        require(projectAudit.auditorIds(msg.sender) > 0, "not from auditor");
+        _;
+    }
+
     function ownersProjectsLength(address owner) external view returns (uint256 length) {
         length = ownersProjects[owner].length;
     }
@@ -117,9 +134,9 @@ contract ProjectInfo is Authorization {
         length = projectPackages[projectId].length;
     }
 
-    function updateValidator(address _validator) external onlyOwner {
-        validator = _validator;
-        emit UpdateValidator(_validator);
+    function updateProjectAudit(ProjectAudit _projectAudit) external onlyOwner {
+        projectAudit = _projectAudit;
+        emit UpdateProjectAudit(_projectAudit);
     }
 
     //
@@ -264,14 +281,14 @@ contract ProjectInfo is Authorization {
         require(packageVersion.status != PackageVersionStatus.AUDIT_PASSED, "Audit passed version cannot be voided");
         _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.VOIDED);
     }
-    function setPackageVersionToAuditPassed(uint256 packageVersionId) external {
+    function setPackageVersionToAuditPassed(uint256 packageVersionId) external onlyAuditor {
         require(packageVersionId < packageVersions.length, "invalid packageVersionId");
         PackageVersion storage packageVersion = packageVersions[packageVersionId];
         require(packageVersion.status == PackageVersionStatus.AUDITING, "not under auditing");
         latestAuditedPackageVersion[packageVersion.packageId] = packageVersion;
         _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.AUDIT_PASSED);
     } 
-    function setPackageVersionToAuditFailed(uint256 packageVersionId) external {
+    function setPackageVersionToAuditFailed(uint256 packageVersionId) external onlyAuditor {
         require(packageVersionId < packageVersions.length, "invalid packageVersionId");
         PackageVersion storage packageVersion = packageVersions[packageVersionId];
         require(packageVersion.status == PackageVersionStatus.AUDITING, "not under auditing");
@@ -298,15 +315,34 @@ contract ProjectInfo is Authorization {
     //     emit RemoveProjectPackage(projectId, packageId);        
     // }
 
-    //
-    // functions called by validators
-    //
-    function validateProject(uint256 projectVersionIdx, ProjectStatus status) external auth { // or validator
+    function validateProject(uint256 projectVersionIdx, ProjectStatus status) external auth {
         require(projectVersionIdx < projectVersions.length, "project not exist");
         ProjectVersion storage version = projectVersions[projectVersionIdx];
         require(version.status == ProjectStatus.PENDING || version.status == ProjectStatus.PASSED, "already validated");
         version.status = status;
         version.lastModifiedDate = uint64(block.timestamp);
         emit Validate(projectVersionIdx, status);
+    }
+
+    function deposit(uint256 projectId, uint256 amount) external onlyProjectOwner(projectId) nonReentrant {
+        require(amount > 0, "amount = 0");
+        amount = _transferTokenFrom(amount);
+        uint256 newBalance = projectOwnerBalance[projectId] + amount;
+        projectOwnerBalance[projectId] = newBalance;
+        emit Deposit(projectId, amount, newBalance);
+    }
+
+    function withdraw(uint256 projectId, uint256 amount) external onlyProjectOwner(projectId) nonReentrant {
+        require(amount > 0, "amount = 0");
+        uint256 newBalance = projectOwnerBalance[projectId] - amount;
+        projectOwnerBalance[projectId] = newBalance;
+        token.safeTransfer(msg.sender, amount);
+        emit Withdraw(projectId, amount, newBalance);
+    }
+
+    function _transferTokenFrom(uint amount) internal returns (uint256 balance) {
+        balance = token.balanceOf(address(this));
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        balance = token.balanceOf(address(this)) - balance;
     }
 }
