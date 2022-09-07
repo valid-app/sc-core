@@ -6,11 +6,11 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract ProjectAudit is Authorization, ReentrancyGuard {
+contract AuditorInfo is Authorization, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     enum AuditorStatus {Active, Inactive}
-    struct AuditorInfo {
+    struct AuditorData {
         address auditor;
         AuditorStatus status;
     }
@@ -18,7 +18,7 @@ contract ProjectAudit is Authorization, ReentrancyGuard {
     IERC20 public immutable token;
     uint256 public auditorIdCount;
 
-    mapping(uint256 => AuditorInfo) public auditorsInfo; //auditorsInfo[auditorId] = AuditorInfo
+    mapping(uint256 => AuditorData) public auditorsData; //auditorsData[auditorId] = AuditorData
     mapping(address => uint256) public auditorIds; //auditorIds[address] = id
     mapping(uint256 => uint256) public auditorBalance; //auditorBalance[auditorId] = amount
 
@@ -32,26 +32,39 @@ contract ProjectAudit is Authorization, ReentrancyGuard {
     }
 
     modifier onlyAuditor {
-        require(auditorIds[msg.sender] > 0, "not from auditor");
+        uint256 auditorId = auditorIds[msg.sender];
+        require(auditorId > 0 && auditorsData[auditorId].status == AuditorStatus.Active, "not from auditor");
         _;
     }
 
-    function addAuditor(address auditor) public onlyOwner {
-        require(auditorIds[auditor] == 0, "auditor already exists");
-        uint256 auditorId = ++auditorIdCount;
-        auditorsInfo[auditorId] = AuditorInfo({
-            auditor: auditor,
-            status: AuditorStatus.Active
-        });
-        auditorIds[auditor] = auditorId;
+    function isAuditor(address account) external returns (bool) {
+        uint256 auditorId = auditorIds[account];
+        return auditorId > 0 && auditorsData[auditorId].status == AuditorStatus.Active;
+    }
+
+    function addAuditor(address auditor) external onlyOwner {
+        uint256 auditorId = auditorIds[auditor];
+        if (auditorId == 0) {
+            auditorId = ++auditorIdCount;
+            auditorsData[auditorId] = AuditorData({
+                auditor: auditor,
+                status: AuditorStatus.Active
+            });
+            auditorIds[auditor] = auditorId;
+        }
+        else {
+            AuditorData storage auditorData = auditorsData[auditorId];
+            require(auditorData.status == AuditorStatus.Inactive, "auditor already exists");
+            auditorData.status = AuditorStatus.Active;
+        }
         emit AddAuditor(auditor);
     }
 
     function removeAuditor(address auditor) external onlyOwner {
         uint256 auditorId = auditorIds[auditor];
-        require(auditorId > 0, "auditor not exist");
-        delete auditorsInfo[auditorId];
-        auditorIds[auditor] = 0;
+        AuditorData storage auditorData = auditorsData[auditorId];
+        require(auditorId > 0 && auditorData.status == AuditorStatus.Active, "auditor not exist");
+        auditorData.status = AuditorStatus.Inactive;
         emit RemoveAuditor(auditor);
     }
 

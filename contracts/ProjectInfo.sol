@@ -5,7 +5,7 @@ import "./Authorization.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./ProjectAudit.sol";
+import "./AuditorInfo.sol";
 
 contract ProjectInfo is Authorization, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -35,7 +35,7 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     }
     
     IERC20 public immutable token;
-    ProjectAudit public projectAudit;
+    AuditorInfo public auditorInfo;
     // active package list
     uint256 public projectCount;
 
@@ -71,7 +71,6 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     event SetProjectCurrentVersion(uint256 indexed projectId, uint256 indexed projectVersionIdx);
     event Validate(uint256 indexed projectVersionIdx, ProjectStatus status);
     
-    event UpdateProjectAudit(ProjectAudit indexed projectAudit);
     event TransferProjectOwnership(uint256 indexed projectId, address indexed newOwner);
     event AddAdmin(uint256 indexed projectId, address indexed admin);
     event RemoveAdmin(uint256 indexed projectId, address indexed admin);
@@ -86,9 +85,9 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     event Deposit(uint256 indexed projectId, uint256 amount, uint256 newBalance);
     event Withdraw(uint256 indexed projectId, uint256 amount, uint256 newBalance);
 
-    constructor(IERC20 _token, ProjectAudit _projectAudit) {
+    constructor(IERC20 _token, AuditorInfo _auditorInfo) {
         token = _token;
-        projectAudit = _projectAudit;
+        auditorInfo = _auditorInfo;
     }
 
     modifier onlyProjectOwner(uint256 projectId) {
@@ -105,7 +104,7 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     }
 
     modifier onlyAuditor {
-        require(projectAudit.auditorIds(msg.sender) > 0, "not from auditor");
+        require(auditorInfo.isAuditor(msg.sender), "not from auditor");
         _;
     }
 
@@ -132,11 +131,6 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     }
     function projectPackagesLength(uint256 projectId) external view returns (uint256 length) {
         length = projectPackages[projectId].length;
-    }
-
-    function updateProjectAudit(ProjectAudit _projectAudit) external onlyOwner {
-        projectAudit = _projectAudit;
-        emit UpdateProjectAudit(_projectAudit);
     }
 
     //

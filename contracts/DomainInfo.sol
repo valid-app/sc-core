@@ -20,7 +20,7 @@ contract DomainInfo is Authorization, ReentrancyGuard {
     event UpdateDomainModule(address indexed owner, string domainName, string module);
     event Deposit(address indexed owner, string domainName, uint256 amount, uint256 newBalance);
     event Withdraw(address indexed owner, string domainName, uint256 amount, uint256 newBalance);
-    event Spend(address indexed owner, string domainName, address indexed spender, uint256 amount, uint256 newBalance);
+    event Spend(address indexed sender, address indexed owner, string domainName, address indexed spender, uint256 amount, uint256 newBalance);
     event Approval(address indexed owner, string domainName, address indexed spender, uint256 value);
 
     constructor(IERC20 _token) {
@@ -59,27 +59,39 @@ contract DomainInfo is Authorization, ReentrancyGuard {
         emit Withdraw(msg.sender, domainName, amount, newBalance);
     }
 
-    function approve(
+    function increaseAllowance(
         address spender, 
         string calldata domainName, 
-        uint256 amount
+        uint256 addedValue
     ) external {
-        _approve(msg.sender, domainName, spender, amount);
+        uint256 currentAllowance = allowances[owner][domainName][spender];
+        _approve(msg.sender, domainName, spender, currentAllowance + addedValue);
+    }
+
+    function decreaseAllowance(
+        address spender, 
+        string calldata domainName, 
+        uint256 subtractedValue
+    ) external {
+        uint256 currentAllowance = allowances[owner][domainName][spender];
+        _approve(msg.sender, domainName, spender, currentAllowance - subtractedValue);
     }
 
     function spend(
         address owner, 
         string calldata domainName, 
+        address destination,
         uint256 amount
     ) external nonReentrant {
         require(amount > 0, "amount = 0");
-        uint256 currentAllowance = allowances[owner][domainName][msg.sender];
+        require(destination != address(0), "transfer to zero address");
+        uint256 currentAllowance = allowances[owner][domainName][destination];
         require(currentAllowance >= amount, "insufficient allowance");
         uint256 newBalance = balanceOf[owner][domainName] - amount;
         balanceOf[owner][domainName] = newBalance;
-        _approve(owner, domainName, msg.sender, currentAllowance - amount);
-        token.safeTransfer(msg.sender, amount);
-        emit Spend(owner, domainName, msg.sender, amount, newBalance);
+        _approve(owner, domainName, destination, currentAllowance - amount);
+        token.safeTransfer(destination, amount);
+        emit Spend(msg.sender, owner, domainName, destination, amount, newBalance);
     }
 
     function _approve(
@@ -88,8 +100,8 @@ contract DomainInfo is Authorization, ReentrancyGuard {
         address spender,
         uint256 amount
     ) internal {
-        require(owner != address(0), "ERC20: approve from the zero address");
-        require(spender != address(0), "ERC20: approve to the zero address");
+        require(owner != address(0), "approve from the zero address");
+        require(spender != address(0), "approve to the zero address");
 
         allowances[owner][domainName][spender] = amount;
         emit Approval(owner, domainName, spender, amount);
