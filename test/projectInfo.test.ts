@@ -1,14 +1,16 @@
 import 'mocha';
 
 import {Utils, Wallet, Erc20, BigNumber} from "@ijstech/eth-wallet";
-import {ProjectInfo} from '../src/contracts';
+import {AuditorInfo, ProjectInfo, Scom} from '../src/contracts';
 import * as Ganache from "ganache";
 import * as assert from 'assert';
 
 suite('##Contracts', function() {  
     this.timeout(40000);
-    let provider = Ganache.provider()        
-    let wallet = new Wallet(provider);   
+    let provider = Ganache.provider();        
+    let wallet = new Wallet(provider);
+    let token: Scom;   
+    let auditorInfo: AuditorInfo;
     let projectInfo: ProjectInfo; 
     let accounts: string[];   
     let projectVersionMap: {[key: number]: any[]} = {};
@@ -52,9 +54,28 @@ suite('##Contracts', function() {
         accounts = await wallet.accounts;
     })
     test('Deploy contracts', async function(){
-        wallet.defaultAccount = accounts[0];      
+        wallet.defaultAccount = accounts[0]; 
+        token = new Scom(wallet);  
+        await token.deploy({
+            minter: accounts[0],
+            initSupplyTo: accounts[0], 
+            initSupply: Utils.toDecimals(999999), 
+            totalSupply: Utils.toDecimals(999999)
+        })   
+        await token.transfer({
+            amount: Utils.toDecimals(6000),
+            to: accounts[1]
+        })
+        auditorInfo = new AuditorInfo(wallet);
+        await auditorInfo.deploy({
+            token: token.address,
+            cooldownPeriod: 0
+        });
         projectInfo = new ProjectInfo(wallet);
-        await projectInfo.deploy(accounts[0]);
+        await projectInfo.deploy({
+            auditorInfo: auditorInfo.address,
+            token: token.address
+        });
         console.log('projectInfo', projectInfo.address)     
     })    
     test('Create a new project and a project version', async function() {    
@@ -124,6 +145,63 @@ suite('##Contracts', function() {
             let packageInfo = await projectInfo.packages(packageId);
             console.log('packageInfo', packageInfo);
         }
-
+    })
+    test('Add auditor', async function() {
+        wallet.defaultAccount = accounts[0]; 
+        await auditorInfo.addAuditor(accounts[0]);
+    })
+    test('Set package status to AUDIT_PASSED', async function() { 
+        wallet.defaultAccount = accounts[0]; 
+        await projectInfo.setPackageVersionToAuditPassed(0);
+    })
+    test('Stake to Project Id 0', async function() { 
+        wallet.defaultAccount = accounts[0]; 
+        await token.approve({
+            spender: projectInfo.address,
+            amount: Utils.toDecimals(100)
+        });
+        await projectInfo.stake({
+            projectId: 0,
+            amount: Utils.toDecimals(100)
+        })
+        let backerBalance = await projectInfo.projectBackerBalance({
+            param1: accounts[0],
+            param2: 0
+        })
+        let projectBalance = await projectInfo.projectBalance(0);
+        assert.strictEqual(backerBalance.toFixed(), Utils.toDecimals(100).toFixed());
+        assert.strictEqual(projectBalance.toFixed(), Utils.toDecimals(100).toFixed());
+    })
+    test('Account 0: Unstake from Project Id 0', async function() { 
+        wallet.defaultAccount = accounts[0]; 
+        await projectInfo.unstake({
+            projectId: 0,
+            amount: Utils.toDecimals(99)
+        })
+        let backerBalance = await projectInfo.projectBackerBalance({
+            param1: accounts[0],
+            param2: 0
+        })
+        let projectBalance = await projectInfo.projectBalance(0);
+        assert.strictEqual(backerBalance.toFixed(), Utils.toDecimals(1).toFixed());
+        assert.strictEqual(projectBalance.toFixed(), Utils.toDecimals(1).toFixed());
+    })
+    test('Account 1: Stake to Project Id 0', async function() { 
+        wallet.defaultAccount = accounts[1]; 
+        await token.approve({
+            spender: projectInfo.address,
+            amount: Utils.toDecimals(200)
+        });
+        await projectInfo.stake({
+            projectId: 0,
+            amount: Utils.toDecimals(200)
+        })
+        let backerBalance = await projectInfo.projectBackerBalance({
+            param1: accounts[1],
+            param2: 0
+        })
+        let projectBalance = await projectInfo.projectBalance(0);
+        assert.strictEqual(backerBalance.toFixed(), Utils.toDecimals(200).toFixed());
+        assert.strictEqual(projectBalance.toFixed(), Utils.toDecimals(201).toFixed());
     })
 })

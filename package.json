@@ -1,15 +1,16 @@
 {
   "name": "@validapp/sc-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "main": "lib/index.js",
   "types": "types/index.d.ts",
   "typings": "types/index.d.ts",
   "scripts": {
     "build": "npm run build:contracts && npm run build:lib",
-    "build:contracts": "sol2ts contracts.json",
-    "build:lib": "tsc && node esbuild.bundle",
+    "build:contracts": "rm -rf src/contracts && rm -rf types/contracts && sol2ts contracts.json",
+    "build:lib": "rm -rf lib/contracts && tsc && node esbuild.bundle",
     "test": "mocha --exit --require ts-node/register test/*.spec.ts",
+    "test:domainInfo": "mocha -exit --require ts-node/register test/domainInfo.test.ts",
     "test:projectInfo": "mocha --ui tdd --exit --require ts-node/register test/projectInfo.test.ts",
     "deploy": "ts-node tools/deploy.ts",
     "setup": "ts-node tools/setup.ts"
@@ -18,7 +19,7 @@
     "@types/mocha": "9.1.1",
     "@openzeppelin/contracts": "4.6.0",
     "@ijstech/eth-contract": "https://github.com/ijstech/eth-contract",
-    "@ijstech/eth-wallet": "https://github.com/ijstech/eth-wallet",
+    "@ijstech/eth-wallet": "0.1.14",
     "@types/node": "14.17",
     "esbuild": "0.13.13",
     "ganache": "7.2.0",
