@@ -6,7 +6,6 @@ import * as Config from '../data/config';
 async function setupProjectInfo(wallet: Wallet) {
     let {projectInfoOptions} = Config.setupOptions;
     let projectInfo = new Contracts.ProjectInfo(wallet, projectInfoOptions.address);
-    let projectVersionIdx = 0;
     for (let i = 0; i < projectInfoOptions.projects.length; i++) {
         let project = projectInfoOptions.projects[i];
         if (project.isFirstVersion) {
@@ -20,20 +19,17 @@ async function setupProjectInfo(wallet: Wallet) {
         }
         if (project.validate) {
             await projectInfo.validateProject({
-                projectVersionIdx,
+                projectVersionIdx: project.projectVersionIdx,
                 status: 1
             });
     
             await projectInfo.setProjectCurrentVersion({
                 projectId: project.projectId,
-                versionIdx: projectVersionIdx
+                versionIdx: project.projectVersionIdx
             })
         }
-
-        projectVersionIdx++;
     }
     
-    let packageVersionId = 0;
     for (let i = 0; i < projectInfoOptions.packages.length; i++) {
         let packageInfo = projectInfoOptions.packages[i];
         await projectInfo.newPackage({
@@ -43,14 +39,13 @@ async function setupProjectInfo(wallet: Wallet) {
         
         if (packageInfo.setToAuditing) {
             await projectInfo.setPackageVersionToAuditing({
-                packageVersionId,
+                packageVersionId: packageInfo.packageVersionId,
                 ipfsCid: packageInfo.codeCid
             })
         }
         if (packageInfo.setToAuditPassed) {
-            await projectInfo.setPackageVersionToAuditPassed(packageVersionId)
+            await projectInfo.setPackageVersionToAuditPassed(packageInfo.packageVersionId)
         }
-        packageVersionId++;
     }
 
 }
