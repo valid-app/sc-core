@@ -39,7 +39,8 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     // active package list
     uint256 public projectCount;
 
-    mapping(uint256 => uint256) public projectOwnerBalance; //projectOwnerBalance[projectId] = amount
+    mapping(uint256 => uint256) public projectBalance; //projectBalance[projectId] = amount
+    mapping(address => mapping(uint256 => uint256)) public projectBackerBalance; //projectBackerBalance[staker][projectId] = amount
     
     // project <-> owner / admin
     mapping(uint256 => address) public projectOwner; // projectOwner[projectId] = owner
@@ -82,8 +83,8 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     // event AddProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
     // event RemoveProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
 
-    event Deposit(uint256 indexed projectId, uint256 amount, uint256 newBalance);
-    event Withdraw(uint256 indexed projectId, uint256 amount, uint256 newBalance);
+    event Stake(address indexed sender, uint256 indexed projectId, uint256 amount, uint256 newBalance);
+    event Unstake(address indexed sender, uint256 indexed projectId, uint256 amount, uint256 newBalance);
 
     constructor(IERC20 _token, AuditorInfo _auditorInfo) {
         token = _token;
@@ -103,8 +104,8 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         _;
     }
 
-    modifier onlyAuditor {
-        require(auditorInfo.isAuditor(msg.sender), "not from auditor");
+    modifier onlyActiveAuditor {
+        require(auditorInfo.isActiveAuditor(msg.sender), "not from active auditor");
         _;
     }
 
@@ -275,14 +276,14 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         require(packageVersion.status != PackageVersionStatus.AUDIT_PASSED, "Audit passed version cannot be voided");
         _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.VOIDED);
     }
-    function setPackageVersionToAuditPassed(uint256 packageVersionId) external onlyAuditor {
+    function setPackageVersionToAuditPassed(uint256 packageVersionId) external onlyActiveAuditor {
         require(packageVersionId < packageVersions.length, "invalid packageVersionId");
         PackageVersion storage packageVersion = packageVersions[packageVersionId];
         require(packageVersion.status == PackageVersionStatus.AUDITING, "not under auditing");
         latestAuditedPackageVersion[packageVersion.packageId] = packageVersion;
         _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.AUDIT_PASSED);
     } 
-    function setPackageVersionToAuditFailed(uint256 packageVersionId) external onlyAuditor {
+    function setPackageVersionToAuditFailed(uint256 packageVersionId) external onlyActiveAuditor {
         require(packageVersionId < packageVersions.length, "invalid packageVersionId");
         PackageVersion storage packageVersion = packageVersions[packageVersionId];
         require(packageVersion.status == PackageVersionStatus.AUDITING, "not under auditing");
@@ -318,20 +319,22 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         emit Validate(projectVersionIdx, status);
     }
 
-    function deposit(uint256 projectId, uint256 amount) external onlyProjectOwner(projectId) nonReentrant {
+    function stake(uint256 projectId, uint256 amount) external nonReentrant {
         require(amount > 0, "amount = 0");
         amount = _transferTokenFrom(amount);
-        uint256 newBalance = projectOwnerBalance[projectId] + amount;
-        projectOwnerBalance[projectId] = newBalance;
-        emit Deposit(projectId, amount, newBalance);
+        uint256 newBalance = projectBackerBalance[msg.sender][projectId] + amount;
+        projectBackerBalance[msg.sender][projectId] = newBalance;
+        projectBalance[projectId] += amount;
+        emit Stake(msg.sender, projectId, amount, newBalance);
     }
 
-    function withdraw(uint256 projectId, uint256 amount) external onlyProjectOwner(projectId) nonReentrant {
+    function unstake(uint256 projectId, uint256 amount) external nonReentrant {
         require(amount > 0, "amount = 0");
-        uint256 newBalance = projectOwnerBalance[projectId] - amount;
-        projectOwnerBalance[projectId] = newBalance;
+        uint256 newBalance = projectBackerBalance[msg.sender][projectId] - amount;
+        projectBackerBalance[msg.sender][projectId] = newBalance;
+        projectBalance[projectId] -= amount;
         token.safeTransfer(msg.sender, amount);
-        emit Withdraw(projectId, amount, newBalance);
+        emit Unstake(msg.sender, projectId, amount, newBalance);
     }
 
     function _transferTokenFrom(uint amount) internal returns (uint256 balance) {
