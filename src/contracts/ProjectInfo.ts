@@ -4,7 +4,7 @@ import Bin from "./ProjectInfo.json";
 export interface IDeployParams {token:string;auditorInfo:string}
 export interface IAddProjectAdminParams {projectId:number|BigNumber;admin:string}
 export interface INewPackageParams {projectId:number|BigNumber;ipfsCid:string}
-export interface INewPackageVersionParams {projectId:number|BigNumber;packageId:number|BigNumber}
+export interface INewPackageVersionParams {projectId:number|BigNumber;packageId:number|BigNumber;version:{major:number|BigNumber,minor:number|BigNumber,patch:number|BigNumber};ipfsCid:string}
 export interface INewProjectVersionParams {projectId:number|BigNumber;ipfsCid:string}
 export interface IOwnersProjectsParams {param1:string;param2:number|BigNumber}
 export interface IOwnersProjectsInvParams {param1:string;param2:number|BigNumber}
@@ -16,13 +16,13 @@ export interface IProjectPackagesParams {param1:number|BigNumber;param2:number|B
 export interface IProjectPackagesInvParams {param1:number|BigNumber;param2:number|BigNumber}
 export interface IProjectVersionListParams {param1:number|BigNumber;param2:number|BigNumber}
 export interface IRemoveProjectAdminParams {projectId:number|BigNumber;admin:string}
-export interface ISetPackageVersionToAuditingParams {packageVersionId:number|BigNumber;ipfsCid:string}
+export interface ISetPackageVersionToAuditFailedParams {packageVersionId:number|BigNumber;reportUri:string}
+export interface ISetPackageVersionToAuditPassedParams {packageVersionId:number|BigNumber;reportUri:string}
 export interface ISetProjectCurrentVersionParams {projectId:number|BigNumber;versionIdx:number|BigNumber}
 export interface IStakeParams {projectId:number|BigNumber;amount:number|BigNumber}
 export interface ITransferProjectOwnershipParams {projectId:number|BigNumber;newOwner:string}
 export interface IUnstakeParams {projectId:number|BigNumber;amount:number|BigNumber}
 export interface IUpdatePackageIpfsCidParams {projectId:number|BigNumber;packageId:number|BigNumber;ipfsCid:string}
-export interface IValidateProjectParams {projectVersionIdx:number|BigNumber;status:number|BigNumber}
 export interface IVoidProjectVersionParams {projectId:number|BigNumber;versionIdx:number|BigNumber}
 export class ProjectInfo extends Contract{
     constructor(wallet: IWallet, address?: string){
@@ -83,7 +83,13 @@ export class ProjectInfo extends Contract{
         return {
             packageId: new BigNumber(result.packageId),
             packageVersionId: new BigNumber(result.packageVersionId),
-            version: new BigNumber(result.version),
+            version: 
+            {
+                major: new BigNumber(result.version.major),
+                minor: new BigNumber(result.version.minor),
+                patch: new BigNumber(result.version.patch)
+            }
+            ,
             _event: event
         };
     }
@@ -212,17 +218,6 @@ export class ProjectInfo extends Contract{
             _event: event
         };
     }
-    parseValidateEvent(receipt: TransactionReceipt): ProjectInfo.ValidateEvent[]{
-        return this.parseEvents(receipt, "Validate").map(e=>this.decodeValidateEvent(e));
-    }
-    decodeValidateEvent(event: Event): ProjectInfo.ValidateEvent{
-        let result = event.data;
-        return {
-            projectVersionIdx: new BigNumber(result.projectVersionIdx),
-            status: new BigNumber(result.status),
-            _event: event
-        };
-    }
     parseVoidProjectVersionEvent(receipt: TransactionReceipt): ProjectInfo.VoidProjectVersionEvent[]{
         return this.parseEvents(receipt, "VoidProjectVersion").map(e=>this.decodeVoidProjectVersionEvent(e));
     }
@@ -248,7 +243,7 @@ export class ProjectInfo extends Contract{
         (param1:string): Promise<boolean>;
     }
     latestAuditedPackageVersion: {
-        (param1:number|BigNumber): Promise<{packageId:BigNumber,version:BigNumber,status:BigNumber,ipfsCid:string}>;
+        (param1:number|BigNumber): Promise<{packageId:BigNumber,version:{major:BigNumber,minor:BigNumber,patch:BigNumber},status:BigNumber,ipfsCid:string,reportUri:string}>;
     }
     newOwner: {
         (): Promise<string>;
@@ -282,7 +277,7 @@ export class ProjectInfo extends Contract{
         (owner:string): Promise<BigNumber>;
     }
     packageVersions: {
-        (param1:number|BigNumber): Promise<{packageId:BigNumber,version:BigNumber,status:BigNumber,ipfsCid:string}>;
+        (param1:number|BigNumber): Promise<{packageId:BigNumber,version:{major:BigNumber,minor:BigNumber,patch:BigNumber},status:BigNumber,ipfsCid:string,reportUri:string}>;
     }
     packageVersionsLength: {
         (): Promise<BigNumber>;
@@ -359,16 +354,12 @@ export class ProjectInfo extends Contract{
         call: (params: IRemoveProjectAdminParams) => Promise<void>;
     }
     setPackageVersionToAuditFailed: {
-        (packageVersionId:number|BigNumber): Promise<TransactionReceipt>;
-        call: (packageVersionId:number|BigNumber) => Promise<void>;
+        (params: ISetPackageVersionToAuditFailedParams): Promise<TransactionReceipt>;
+        call: (params: ISetPackageVersionToAuditFailedParams) => Promise<void>;
     }
     setPackageVersionToAuditPassed: {
-        (packageVersionId:number|BigNumber): Promise<TransactionReceipt>;
-        call: (packageVersionId:number|BigNumber) => Promise<void>;
-    }
-    setPackageVersionToAuditing: {
-        (params: ISetPackageVersionToAuditingParams): Promise<TransactionReceipt>;
-        call: (params: ISetPackageVersionToAuditingParams) => Promise<void>;
+        (params: ISetPackageVersionToAuditPassedParams): Promise<TransactionReceipt>;
+        call: (params: ISetPackageVersionToAuditPassedParams) => Promise<void>;
     }
     setProjectCurrentVersion: {
         (params: ISetProjectCurrentVersionParams): Promise<TransactionReceipt>;
@@ -405,10 +396,6 @@ export class ProjectInfo extends Contract{
         (params: IUpdatePackageIpfsCidParams): Promise<TransactionReceipt>;
         call: (params: IUpdatePackageIpfsCidParams) => Promise<void>;
     }
-    validateProject: {
-        (params: IValidateProjectParams): Promise<TransactionReceipt>;
-        call: (params: IValidateProjectParams) => Promise<void>;
-    }
     voidPackageVersion: {
         (packageVersionId:number|BigNumber): Promise<TransactionReceipt>;
         call: (packageVersionId:number|BigNumber) => Promise<void>;
@@ -428,13 +415,20 @@ export class ProjectInfo extends Contract{
             return result;
         }
         this.isPermitted = isPermitted_call
-        let latestAuditedPackageVersion_call = async (param1:number|BigNumber): Promise<{packageId:BigNumber,version:BigNumber,status:BigNumber,ipfsCid:string}> => {
+        let latestAuditedPackageVersion_call = async (param1:number|BigNumber): Promise<{packageId:BigNumber,version:{major:BigNumber,minor:BigNumber,patch:BigNumber},status:BigNumber,ipfsCid:string,reportUri:string}> => {
             let result = await this.call('latestAuditedPackageVersion',[Utils.toString(param1)]);
             return {
                 packageId: new BigNumber(result.packageId),
-                version: new BigNumber(result.version),
+                version: 
+                {
+                    major: new BigNumber(result.version.major),
+                    minor: new BigNumber(result.version.minor),
+                    patch: new BigNumber(result.version.patch)
+                }
+                ,
                 status: new BigNumber(result.status),
-                ipfsCid: result.ipfsCid
+                ipfsCid: result.ipfsCid,
+                reportUri: result.reportUri
             };
         }
         this.latestAuditedPackageVersion = latestAuditedPackageVersion_call
@@ -465,13 +459,20 @@ export class ProjectInfo extends Contract{
             return new BigNumber(result);
         }
         this.ownersProjectsLength = ownersProjectsLength_call
-        let packageVersions_call = async (param1:number|BigNumber): Promise<{packageId:BigNumber,version:BigNumber,status:BigNumber,ipfsCid:string}> => {
+        let packageVersions_call = async (param1:number|BigNumber): Promise<{packageId:BigNumber,version:{major:BigNumber,minor:BigNumber,patch:BigNumber},status:BigNumber,ipfsCid:string,reportUri:string}> => {
             let result = await this.call('packageVersions',[Utils.toString(param1)]);
             return {
                 packageId: new BigNumber(result.packageId),
-                version: new BigNumber(result.version),
+                version: 
+                {
+                    major: new BigNumber(result.version.major),
+                    minor: new BigNumber(result.version.minor),
+                    patch: new BigNumber(result.version.patch)
+                }
+                ,
                 status: new BigNumber(result.status),
-                ipfsCid: result.ipfsCid
+                ipfsCid: result.ipfsCid,
+                reportUri: result.reportUri
             };
         }
         this.packageVersions = packageVersions_call
@@ -643,7 +644,7 @@ export class ProjectInfo extends Contract{
         this.newPackage = Object.assign(newPackage_send, {
             call:newPackage_call
         });
-        let newPackageVersionParams = (params: INewPackageVersionParams) => [Utils.toString(params.projectId),Utils.toString(params.packageId)];
+        let newPackageVersionParams = (params: INewPackageVersionParams) => [Utils.toString(params.projectId),Utils.toString(params.packageId),[Utils.toString(params.version.major),Utils.toString(params.version.minor),Utils.toString(params.version.patch)],params.ipfsCid];
         let newPackageVersion_send = async (params: INewPackageVersionParams): Promise<TransactionReceipt> => {
             let result = await this.send('newPackageVersion',newPackageVersionParams(params));
             return result;
@@ -701,39 +702,29 @@ export class ProjectInfo extends Contract{
         this.removeProjectAdmin = Object.assign(removeProjectAdmin_send, {
             call:removeProjectAdmin_call
         });
-        let setPackageVersionToAuditFailed_send = async (packageVersionId:number|BigNumber): Promise<TransactionReceipt> => {
-            let result = await this.send('setPackageVersionToAuditFailed',[Utils.toString(packageVersionId)]);
+        let setPackageVersionToAuditFailedParams = (params: ISetPackageVersionToAuditFailedParams) => [Utils.toString(params.packageVersionId),params.reportUri];
+        let setPackageVersionToAuditFailed_send = async (params: ISetPackageVersionToAuditFailedParams): Promise<TransactionReceipt> => {
+            let result = await this.send('setPackageVersionToAuditFailed',setPackageVersionToAuditFailedParams(params));
             return result;
         }
-        let setPackageVersionToAuditFailed_call = async (packageVersionId:number|BigNumber): Promise<void> => {
-            let result = await this.call('setPackageVersionToAuditFailed',[Utils.toString(packageVersionId)]);
+        let setPackageVersionToAuditFailed_call = async (params: ISetPackageVersionToAuditFailedParams): Promise<void> => {
+            let result = await this.call('setPackageVersionToAuditFailed',setPackageVersionToAuditFailedParams(params));
             return;
         }
         this.setPackageVersionToAuditFailed = Object.assign(setPackageVersionToAuditFailed_send, {
             call:setPackageVersionToAuditFailed_call
         });
-        let setPackageVersionToAuditPassed_send = async (packageVersionId:number|BigNumber): Promise<TransactionReceipt> => {
-            let result = await this.send('setPackageVersionToAuditPassed',[Utils.toString(packageVersionId)]);
+        let setPackageVersionToAuditPassedParams = (params: ISetPackageVersionToAuditPassedParams) => [Utils.toString(params.packageVersionId),params.reportUri];
+        let setPackageVersionToAuditPassed_send = async (params: ISetPackageVersionToAuditPassedParams): Promise<TransactionReceipt> => {
+            let result = await this.send('setPackageVersionToAuditPassed',setPackageVersionToAuditPassedParams(params));
             return result;
         }
-        let setPackageVersionToAuditPassed_call = async (packageVersionId:number|BigNumber): Promise<void> => {
-            let result = await this.call('setPackageVersionToAuditPassed',[Utils.toString(packageVersionId)]);
+        let setPackageVersionToAuditPassed_call = async (params: ISetPackageVersionToAuditPassedParams): Promise<void> => {
+            let result = await this.call('setPackageVersionToAuditPassed',setPackageVersionToAuditPassedParams(params));
             return;
         }
         this.setPackageVersionToAuditPassed = Object.assign(setPackageVersionToAuditPassed_send, {
             call:setPackageVersionToAuditPassed_call
-        });
-        let setPackageVersionToAuditingParams = (params: ISetPackageVersionToAuditingParams) => [Utils.toString(params.packageVersionId),params.ipfsCid];
-        let setPackageVersionToAuditing_send = async (params: ISetPackageVersionToAuditingParams): Promise<TransactionReceipt> => {
-            let result = await this.send('setPackageVersionToAuditing',setPackageVersionToAuditingParams(params));
-            return result;
-        }
-        let setPackageVersionToAuditing_call = async (params: ISetPackageVersionToAuditingParams): Promise<void> => {
-            let result = await this.call('setPackageVersionToAuditing',setPackageVersionToAuditingParams(params));
-            return;
-        }
-        this.setPackageVersionToAuditing = Object.assign(setPackageVersionToAuditing_send, {
-            call:setPackageVersionToAuditing_call
         });
         let setProjectCurrentVersionParams = (params: ISetProjectCurrentVersionParams) => [Utils.toString(params.projectId),Utils.toString(params.versionIdx)];
         let setProjectCurrentVersion_send = async (params: ISetProjectCurrentVersionParams): Promise<TransactionReceipt> => {
@@ -828,18 +819,6 @@ export class ProjectInfo extends Contract{
         this.updatePackageIpfsCid = Object.assign(updatePackageIpfsCid_send, {
             call:updatePackageIpfsCid_call
         });
-        let validateProjectParams = (params: IValidateProjectParams) => [Utils.toString(params.projectVersionIdx),Utils.toString(params.status)];
-        let validateProject_send = async (params: IValidateProjectParams): Promise<TransactionReceipt> => {
-            let result = await this.send('validateProject',validateProjectParams(params));
-            return result;
-        }
-        let validateProject_call = async (params: IValidateProjectParams): Promise<void> => {
-            let result = await this.call('validateProject',validateProjectParams(params));
-            return;
-        }
-        this.validateProject = Object.assign(validateProject_send, {
-            call:validateProject_call
-        });
         let voidPackageVersion_send = async (packageVersionId:number|BigNumber): Promise<TransactionReceipt> => {
             let result = await this.send('voidPackageVersion',[Utils.toString(packageVersionId)]);
             return result;
@@ -870,7 +849,7 @@ export module ProjectInfo{
     export interface AuthorizeEvent {user:string,_event:Event}
     export interface DeauthorizeEvent {user:string,_event:Event}
     export interface NewPackageEvent {projectId:BigNumber,packageId:BigNumber,ipfsCid:string,_event:Event}
-    export interface NewPackageVersionEvent {packageId:BigNumber,packageVersionId:BigNumber,version:BigNumber,_event:Event}
+    export interface NewPackageVersionEvent {packageId:BigNumber,packageVersionId:BigNumber,version:{major:BigNumber,minor:BigNumber,patch:BigNumber},_event:Event}
     export interface NewProjectEvent {projectId:BigNumber,owner:string,_event:Event}
     export interface NewProjectVersionEvent {projectId:BigNumber,projectVersionIdx:BigNumber,ipfsCid:string,_event:Event}
     export interface RemoveAdminEvent {projectId:BigNumber,admin:string,_event:Event}
@@ -882,6 +861,5 @@ export module ProjectInfo{
     export interface TransferProjectOwnershipEvent {projectId:BigNumber,newOwner:string,_event:Event}
     export interface UnstakeEvent {sender:string,projectId:BigNumber,amount:BigNumber,newBalance:BigNumber,_event:Event}
     export interface UpdatePackageIpfsCidEvent {packageId:BigNumber,ipfsCid:string,_event:Event}
-    export interface ValidateEvent {projectVersionIdx:BigNumber,status:BigNumber,_event:Event}
     export interface VoidProjectVersionEvent {projectVersionIdx:BigNumber,_event:Event}
 }

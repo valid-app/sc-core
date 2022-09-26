@@ -17,17 +17,10 @@ async function setupProjectInfo(wallet: Wallet) {
                 ipfsCid: project.ipfsCid
             })    
         }
-        if (project.validate) {
-            await projectInfo.validateProject({
-                projectVersionIdx: project.projectVersionIdx,
-                status: 1
-            });
-    
-            await projectInfo.setProjectCurrentVersion({
-                projectId: project.projectId,
-                versionIdx: project.projectVersionIdx
-            })
-        }
+        await projectInfo.setProjectCurrentVersion({
+            projectId: project.projectId,
+            versionIdx: project.projectVersionIdx
+        })
     }
     
     for (let i = 0; i < projectInfoOptions.packages.length; i++) {
@@ -37,14 +30,21 @@ async function setupProjectInfo(wallet: Wallet) {
             ipfsCid: packageInfo.infoCid
         });
         
-        if (packageInfo.setToAuditing) {
-            await projectInfo.setPackageVersionToAuditing({
-                packageVersionId: packageInfo.packageVersionId,
-                ipfsCid: packageInfo.codeCid
-            })
-        }
+        await projectInfo.newPackageVersion({
+            projectId: packageInfo.projectId,
+            packageId: 0,
+            version: {
+                major: 0,
+                minor: 0,
+                patch: 1
+            },
+            ipfsCid: packageInfo.codeCid
+        })
         if (packageInfo.setToAuditPassed) {
-            await projectInfo.setPackageVersionToAuditPassed(packageInfo.packageVersionId)
+            await projectInfo.setPackageVersionToAuditPassed({
+                packageVersionId: packageInfo.packageVersionId,
+                reportUri: packageInfo.reportUri
+            })
         }
     }
 

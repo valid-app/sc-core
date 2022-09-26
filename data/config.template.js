@@ -31,15 +31,13 @@ module.exports = {
                     projectId: 0,
                     projectVersionIdx: 0,
                     ipfsCid: '',
-                    isFirstVersion: true,
-                    validate: true
+                    isFirstVersion: true
                 },
                 {
                     projectId: 1,
                     projectVersionIdx: 1,
                     ipfsCid: '',
-                    isFirstVersion: true,
-                    validate: true
+                    isFirstVersion: true
                 }
             ],
             packages: [
@@ -47,9 +45,9 @@ module.exports = {
                     projectId: 0,
                     packageVersionId: 0,
                     infoCid: '',
-                    setToAuditing: true,
                     setToAuditPassed: true,
-                    codeCid: ''
+                    codeCid: '',
+                    reportUri: ''
                 },
             ]
         }        

@@ -14,6 +14,12 @@ export interface INewPackageParams {
 export interface INewPackageVersionParams {
     projectId: number | BigNumber;
     packageId: number | BigNumber;
+    version: {
+        major: number | BigNumber;
+        minor: number | BigNumber;
+        patch: number | BigNumber;
+    };
+    ipfsCid: string;
 }
 export interface INewProjectVersionParams {
     projectId: number | BigNumber;
@@ -59,9 +65,13 @@ export interface IRemoveProjectAdminParams {
     projectId: number | BigNumber;
     admin: string;
 }
-export interface ISetPackageVersionToAuditingParams {
+export interface ISetPackageVersionToAuditFailedParams {
     packageVersionId: number | BigNumber;
-    ipfsCid: string;
+    reportUri: string;
+}
+export interface ISetPackageVersionToAuditPassedParams {
+    packageVersionId: number | BigNumber;
+    reportUri: string;
 }
 export interface ISetProjectCurrentVersionParams {
     projectId: number | BigNumber;
@@ -83,10 +93,6 @@ export interface IUpdatePackageIpfsCidParams {
     projectId: number | BigNumber;
     packageId: number | BigNumber;
     ipfsCid: string;
-}
-export interface IValidateProjectParams {
-    projectVersionIdx: number | BigNumber;
-    status: number | BigNumber;
 }
 export interface IVoidProjectVersionParams {
     projectId: number | BigNumber;
@@ -127,8 +133,6 @@ export declare class ProjectInfo extends Contract {
     decodeUnstakeEvent(event: Event): ProjectInfo.UnstakeEvent;
     parseUpdatePackageIpfsCidEvent(receipt: TransactionReceipt): ProjectInfo.UpdatePackageIpfsCidEvent[];
     decodeUpdatePackageIpfsCidEvent(event: Event): ProjectInfo.UpdatePackageIpfsCidEvent;
-    parseValidateEvent(receipt: TransactionReceipt): ProjectInfo.ValidateEvent[];
-    decodeValidateEvent(event: Event): ProjectInfo.ValidateEvent;
     parseVoidProjectVersionEvent(receipt: TransactionReceipt): ProjectInfo.VoidProjectVersionEvent[];
     decodeVoidProjectVersionEvent(event: Event): ProjectInfo.VoidProjectVersionEvent;
     addProjectAdmin: {
@@ -148,9 +152,14 @@ export declare class ProjectInfo extends Contract {
     latestAuditedPackageVersion: {
         (param1: number | BigNumber): Promise<{
             packageId: BigNumber;
-            version: BigNumber;
+            version: {
+                major: BigNumber;
+                minor: BigNumber;
+                patch: BigNumber;
+            };
             status: BigNumber;
             ipfsCid: string;
+            reportUri: string;
         }>;
     };
     newOwner: {
@@ -187,9 +196,14 @@ export declare class ProjectInfo extends Contract {
     packageVersions: {
         (param1: number | BigNumber): Promise<{
             packageId: BigNumber;
-            version: BigNumber;
+            version: {
+                major: BigNumber;
+                minor: BigNumber;
+                patch: BigNumber;
+            };
             status: BigNumber;
             ipfsCid: string;
+            reportUri: string;
         }>;
     };
     packageVersionsLength: {
@@ -278,16 +292,12 @@ export declare class ProjectInfo extends Contract {
         call: (params: IRemoveProjectAdminParams) => Promise<void>;
     };
     setPackageVersionToAuditFailed: {
-        (packageVersionId: number | BigNumber): Promise<TransactionReceipt>;
-        call: (packageVersionId: number | BigNumber) => Promise<void>;
+        (params: ISetPackageVersionToAuditFailedParams): Promise<TransactionReceipt>;
+        call: (params: ISetPackageVersionToAuditFailedParams) => Promise<void>;
     };
     setPackageVersionToAuditPassed: {
-        (packageVersionId: number | BigNumber): Promise<TransactionReceipt>;
-        call: (packageVersionId: number | BigNumber) => Promise<void>;
-    };
-    setPackageVersionToAuditing: {
-        (params: ISetPackageVersionToAuditingParams): Promise<TransactionReceipt>;
-        call: (params: ISetPackageVersionToAuditingParams) => Promise<void>;
+        (params: ISetPackageVersionToAuditPassedParams): Promise<TransactionReceipt>;
+        call: (params: ISetPackageVersionToAuditPassedParams) => Promise<void>;
     };
     setProjectCurrentVersion: {
         (params: ISetProjectCurrentVersionParams): Promise<TransactionReceipt>;
@@ -324,10 +334,6 @@ export declare class ProjectInfo extends Contract {
         (params: IUpdatePackageIpfsCidParams): Promise<TransactionReceipt>;
         call: (params: IUpdatePackageIpfsCidParams) => Promise<void>;
     };
-    validateProject: {
-        (params: IValidateProjectParams): Promise<TransactionReceipt>;
-        call: (params: IValidateProjectParams) => Promise<void>;
-    };
     voidPackageVersion: {
         (packageVersionId: number | BigNumber): Promise<TransactionReceipt>;
         call: (packageVersionId: number | BigNumber) => Promise<void>;
@@ -361,7 +367,11 @@ export declare module ProjectInfo {
     interface NewPackageVersionEvent {
         packageId: BigNumber;
         packageVersionId: BigNumber;
-        version: BigNumber;
+        version: {
+            major: BigNumber;
+            minor: BigNumber;
+            patch: BigNumber;
+        };
         _event: Event;
     }
     interface NewProjectEvent {
@@ -421,11 +431,6 @@ export declare module ProjectInfo {
     interface UpdatePackageIpfsCidEvent {
         packageId: BigNumber;
         ipfsCid: string;
-        _event: Event;
-    }
-    interface ValidateEvent {
-        projectVersionIdx: BigNumber;
-        status: BigNumber;
         _event: Event;
     }
     interface VoidProjectVersionEvent {

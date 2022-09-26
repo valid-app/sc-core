@@ -109,17 +109,6 @@ suite('##Contracts', function() {
         // let newProject3VersionEvent = await createNewVersion(newProject3Event.projectId.toNumber(), 'bay3');
         projectVersionMap[2] = await getProjectVersionsByProjectId(newProject3Event.projectId.toNumber());
     })
-    test('Set Project Id 0 (Version 1) to PASSED', async function() { 
-        wallet.defaultAccount = accounts[0]; 
-        await projectInfo.permit(accounts[0]);
-        let projectVersionList = projectVersionMap[0];
-        let newProjectReceipt = await projectInfo.validateProject({
-            projectVersionIdx: projectVersionList[0].projectVersionIdx,
-            status: 1
-        });
-        let projectVersion = await projectInfo.projectVersions(projectVersionList[0].projectVersionIdx);
-        console.log('projectVersion', projectVersion)
-    })
     test('Add more versions to Project Id 0', async function() { 
         wallet.defaultAccount = accounts[0]; 
         await createNewVersion(0, 'bay4');
@@ -132,11 +121,17 @@ suite('##Contracts', function() {
             projectId: 0,
             ipfsCid: 'bbyy1'
         })
-        let projectPackagesLength = await projectInfo.projectPackagesLength(0);
-        await projectInfo.setPackageVersionToAuditing({
-            packageVersionId: 0,
+        await projectInfo.newPackageVersion({
+            projectId: 0,
+            packageId: 0,
+            version: {
+                major: 0,
+                minor: 0,
+                patch: 1
+            },
             ipfsCid: 'baad1'
         })
+        let projectPackagesLength = await projectInfo.projectPackagesLength(0);
         for (let i = 0; i < projectPackagesLength.toNumber(); i++) {
             let packageId = await projectInfo.projectPackages({
                 param1: 0,
@@ -146,13 +141,57 @@ suite('##Contracts', function() {
             console.log('packageInfo', packageInfo);
         }
     })
+    test('Bump package patch version', async function() { 
+        wallet.defaultAccount = accounts[0]; 
+        await projectInfo.newPackageVersion({
+            projectId: 0,
+            packageId: 0,
+            version: {
+                major: 0,
+                minor: 0,
+                patch: 2
+            },
+            ipfsCid: 'baad1'
+        })
+    })   
+    test('Bump package minor version', async function() { 
+        wallet.defaultAccount = accounts[0]; 
+        await projectInfo.newPackageVersion({
+            projectId: 0,
+            packageId: 0,
+            version: {
+                major: 0,
+                minor: 1,
+                patch: 1
+            },
+            ipfsCid: 'baad1'
+        })
+    }) 
+    test('Bump package major version', async function() { 
+        wallet.defaultAccount = accounts[0]; 
+        await projectInfo.newPackageVersion({
+            projectId: 0,
+            packageId: 0,
+            version: {
+                major: 1,
+                minor: 0,
+                patch: 2
+            },
+            ipfsCid: 'baad1'
+        })
+    })            
     test('Add auditor', async function() {
         wallet.defaultAccount = accounts[0]; 
         await auditorInfo.addAuditor(accounts[0]);
     })
     test('Set package status to AUDIT_PASSED', async function() { 
         wallet.defaultAccount = accounts[0]; 
-        await projectInfo.setPackageVersionToAuditPassed(0);
+        await projectInfo.setPackageVersionToAuditPassed({
+            packageVersionId: 0,
+            reportUri: 'ber2342'
+        });
+        let packageVersion = await projectInfo.packageVersions(0);
+        assert.strictEqual(packageVersion.reportUri, 'ber2342');
     })
     test('Stake to Project Id 0', async function() { 
         wallet.defaultAccount = accounts[0]; 
