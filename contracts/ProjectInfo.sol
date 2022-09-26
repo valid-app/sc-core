@@ -10,9 +10,9 @@ import "./AuditorInfo.sol";
 contract ProjectInfo is Authorization, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    enum ProjectStatus {PENDING, PASSED, FAILED, VOIDED}
+    enum ProjectStatus {INACTIVE, ACTIVE}
     enum PackageStatus {INACTIVE, ACTIVE}
-    enum PackageVersionStatus {WORK_IN_PROGRESS, AUDITING, AUDIT_PASSED, AUDIT_FAILED, VOIDED}
+    enum PackageVersionStatus {AUDITING, AUDIT_PASSED, AUDIT_FAILED, VOIDED}
 
     struct ProjectVersion {
         uint256 projectId;
@@ -27,11 +27,17 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         PackageStatus status;
         string ipfsCid;
     }
+    struct SemVer {
+        uint256 major;
+        uint256 minor;
+        uint256 patch;        
+    }
     struct PackageVersion {
         uint256 packageId;
-        uint256 version;
+        SemVer version;
         PackageVersionStatus status;
         string ipfsCid;
+        string reportUri;
     }
     
     IERC20 public immutable token;
@@ -70,7 +76,6 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
     event NewProjectVersion(uint256 indexed projectId, uint256 indexed projectVersionIdx, string ipfsCid);
     event VoidProjectVersion(uint256 indexed projectVersionIdx);
     event SetProjectCurrentVersion(uint256 indexed projectId, uint256 indexed projectVersionIdx);
-    event Validate(uint256 indexed projectVersionIdx, ProjectStatus status);
     
     event TransferProjectOwnership(uint256 indexed projectId, address indexed newOwner);
     event AddAdmin(uint256 indexed projectId, address indexed admin);
@@ -78,7 +83,7 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
 
     event NewPackage(uint256 indexed projectId, uint256 indexed packageId, string ipfsCid);
     event UpdatePackageIpfsCid(uint256 indexed packageId, string ipfsCid);
-    event NewPackageVersion(uint256 indexed packageId, uint256 indexed packageVersionId, uint256 version);
+    event NewPackageVersion(uint256 indexed packageId, uint256 indexed packageVersionId, SemVer version);
     event SetPackageVersionStatus(uint256 indexed packageId, uint256 indexed packageVersionId, PackageVersionStatus status);
     // event AddProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
     // event RemoveProjectPackage(uint256 indexed projectId, uint256 indexed packageId);
@@ -202,7 +207,7 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
             projectId: projectId,
             version: projectVersionList[projectId].length, // start from 1
             ipfsCid: ipfsCid,
-            status: ProjectStatus.PENDING,
+            status: ProjectStatus.ACTIVE,
             lastModifiedDate: uint64(block.timestamp)
         }));
         emit NewProjectVersion(projectId, versionIdx, ipfsCid);
@@ -211,7 +216,6 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         require(versionIdx < projectVersions.length, "project not exist");
         ProjectVersion storage version = projectVersions[versionIdx];
         require(version.projectId == projectId, "projectId/versionIdx not match");
-        require(version.status == ProjectStatus.PASSED, "not passed");
         projectCurrentVersion[projectId] = versionIdx;
         emit SetProjectCurrentVersion(projectId, versionIdx);
     }
@@ -219,7 +223,7 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         require(versionIdx < projectVersions.length, "project not exist");
         ProjectVersion storage version = projectVersions[versionIdx];
         require(version.projectId == projectId, "projectId/versionIdx not match");
-        version.status = ProjectStatus.VOIDED;
+        version.status = ProjectStatus.INACTIVE;
         version.lastModifiedDate = uint64(block.timestamp);
         emit VoidProjectVersion(versionIdx);
     }
@@ -233,7 +237,6 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         }));
         projectPackages[projectId].push(packageId);
         emit NewPackage(projectId, packageId, ipfsCid);
-        newPackageVersion(projectId, packageId);
     }
     function updatePackageIpfsCid(uint256 projectId, uint256 packageId, string calldata ipfsCid) external isProjectAdminOrOwner(projectId) {
         require(packageId < packages.length, "invalid packageId");
@@ -242,33 +245,44 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         package.ipfsCid = ipfsCid;
         emit UpdatePackageIpfsCid(packageId, ipfsCid);
     }
-    // TODO: access control ?
-    function newPackageVersion(uint256 projectId, uint256 packageId) public isProjectAdminOrOwner(projectId) returns (uint256 packageVersionId) {
+
+    function newPackageVersion(uint256 projectId, uint256 packageId, SemVer memory version, string calldata ipfsCid) public isProjectAdminOrOwner(projectId) returns (uint256 packageVersionId) {
         require(packageId < packages.length, "invalid packageId");
         require(packages[packageId].projectId == projectId, "projectId/packageId not match");
+        uint256 versionsLength = packageVersionsList[packageId].length;
+        if (versionsLength > 0) {
+            uint256 lastVersionId = packageVersionsList[packageId][versionsLength - 1];
+            PackageVersion memory lastPackageVersion = packageVersions[lastVersionId];
+            if (lastPackageVersion.version.major == version.major) {
+                if (lastPackageVersion.version.minor == version.minor) {
+                    require(version.patch > lastPackageVersion.version.patch, "patch version must be bumped");
+                }
+                else {
+                    require(version.minor > lastPackageVersion.version.minor, "minor version must be bumped");
+                }
+            }
+            else {
+                require(version.major > lastPackageVersion.version.major, "major version must be bumped");
+            }
+        }        
         packageVersionId = packageVersions.length;
         packageVersionsList[packageId].push(packageVersionId);
-        uint256 version = packageVersionsList[packageId].length;
         packageVersions.push(PackageVersion({
             packageId: packageId,
             version: version,
-            status: PackageVersionStatus.WORK_IN_PROGRESS,
-            ipfsCid: ""
+            status: PackageVersionStatus.AUDITING,
+            ipfsCid: ipfsCid,
+            reportUri: ""
         }));
 
         emit NewPackageVersion(packageId, packageVersionId, version);
     }
+
     function _setPackageVersionStatus(PackageVersion storage packageVersion, uint256 packageVersionId, PackageVersionStatus status) internal {
         packageVersion.status = status;
         emit SetPackageVersionStatus(packageVersion.packageId, packageVersionId, status);
     }
-    function setPackageVersionToAuditing(uint256 packageVersionId, string calldata ipfsCid) external {
-        require(packageVersionId < packageVersions.length, "invalid packageVersionId");
-        PackageVersion storage packageVersion = packageVersions[packageVersionId];
-        require(packageVersion.status == PackageVersionStatus.WORK_IN_PROGRESS, "not in progress");
-        packageVersion.ipfsCid = ipfsCid;
-        _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.AUDITING);
-    }
+
     function voidPackageVersion(uint256 packageVersionId) external {
         require(packageVersionId < packageVersions.length, "invalid packageVersionId");
         PackageVersion storage packageVersion = packageVersions[packageVersionId];
@@ -276,17 +290,19 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
         require(packageVersion.status != PackageVersionStatus.AUDIT_PASSED, "Audit passed version cannot be voided");
         _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.VOIDED);
     }
-    function setPackageVersionToAuditPassed(uint256 packageVersionId) external onlyActiveAuditor {
+    function setPackageVersionToAuditPassed(uint256 packageVersionId, string calldata reportUri) external onlyActiveAuditor {
         require(packageVersionId < packageVersions.length, "invalid packageVersionId");
         PackageVersion storage packageVersion = packageVersions[packageVersionId];
         require(packageVersion.status == PackageVersionStatus.AUDITING, "not under auditing");
         latestAuditedPackageVersion[packageVersion.packageId] = packageVersion;
+        packageVersion.reportUri = reportUri;
         _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.AUDIT_PASSED);
     } 
-    function setPackageVersionToAuditFailed(uint256 packageVersionId) external onlyActiveAuditor {
+    function setPackageVersionToAuditFailed(uint256 packageVersionId, string calldata reportUri) external onlyActiveAuditor {
         require(packageVersionId < packageVersions.length, "invalid packageVersionId");
         PackageVersion storage packageVersion = packageVersions[packageVersionId];
         require(packageVersion.status == PackageVersionStatus.AUDITING, "not under auditing");
+        packageVersion.reportUri = reportUri;
         _setPackageVersionStatus(packageVersion, packageVersionId, PackageVersionStatus.AUDIT_FAILED);
     }         
     // function addProjectPackage(uint256 projectId, uint256 packageId) external isProjectAdminOrOwner(projectId) {
@@ -309,15 +325,6 @@ contract ProjectInfo is Authorization, ReentrancyGuard {
 
     //     emit RemoveProjectPackage(projectId, packageId);        
     // }
-
-    function validateProject(uint256 projectVersionIdx, ProjectStatus status) external auth {
-        require(projectVersionIdx < projectVersions.length, "project not exist");
-        ProjectVersion storage version = projectVersions[projectVersionIdx];
-        require(version.status == ProjectStatus.PENDING || version.status == ProjectStatus.PASSED, "already validated");
-        version.status = status;
-        version.lastModifiedDate = uint64(block.timestamp);
-        emit Validate(projectVersionIdx, status);
-    }
 
     function stake(uint256 projectId, uint256 amount) external nonReentrant {
         require(amount > 0, "amount = 0");
